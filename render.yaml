@@ -1,0 +1,14 @@
+services:
+  - type: worker
+    name: nutribob
+    runtime: python
+    repo: https://github.com/matrixcag8/telegrambot
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false        # inserito manualmente nella dashboard Render
+    disk:
+      name: diary-data
+      mountPath: /opt/render/project/src
+      sizeGB: 1
