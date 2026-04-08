@@ -2,6 +2,41 @@
 # Format: food_name: (kcal_per_100g, standard_portion_grams, portion_description)
 # Le calorie sono stime medie per 100g (o per ml nelle bevande).
 
+# ── UNIT_GRAMS ────────────────────────────────────────────────────────────────
+# Peso/volume fisso per unità di misura comuni.
+# Usato da _parse_input in bot.py per convertire "una tazza di X" → Xg.
+# Le unità "descrittive" (fetta, piatto, porzione, pezzo…) NON sono qui:
+# per quelle si usa la std_portion del cibo (qty=1, unit='pcs').
+UNIT_GRAMS: dict[str, int] = {
+    "tazza":      240,   # tazza standard (~240 ml)
+    "tazze":      240,
+    "bicchiere":  250,   # bicchiere standard (~250 ml)
+    "bicchieri":  250,
+    "lattina":    330,   # lattina bibita
+    "lattine":    330,
+    "bottiglia":  500,   # bottiglia piccola
+    "bottiglie":  500,
+    "cucchiaio":   15,   # cucchiaio da tavola
+    "cucchiai":    15,
+    "cucchiaino":   5,   # cucchiaino da tè
+    "cucchiaini":   5,
+    "ml":           1,   # millilitri (1:1 con grammi per le bevande)
+}
+
+# Parole-unità "descrittive": non hanno un peso fisso ma indicano
+# la porzione standard del cibo → qty=1, unit='pcs' in _parse_input.
+PORTION_WORDS: set[str] = {
+    "fetta", "fette",
+    "piatto", "piatti",
+    "porzione", "porzioni",
+    "pezzo", "pezzi",
+    "ciotola", "ciotole",
+    "manciata", "manciate",
+    "vasetto", "vasetti",
+    "trancio", "tranci",
+    "filetto", "filetti",
+}
+
 FOODS: dict[str, tuple[int, int, str]] = {
 
     # ── FRUTTA ──────────────────────────────────────────────────

@@ -20,7 +20,7 @@ from telegram.ext import (
     filters,
 )
 
-from foods import FOODS
+from foods import FOODS, UNIT_GRAMS, PORTION_WORDS
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 
@@ -244,13 +244,13 @@ def _parse_input(text: str) -> tuple[str, float, str]:
 
     # Weight: "200g pasta", "200 g di pasta", "200gr ..."
     m = re.match(
-        r"^(\d+(?:[.,]\d+)?)\s*(?:kg|g|gr|grammi)\s*(?:di\s+)?(.+)$",
+        r"^(\d+(?:[.,]\d+)?)\s*(?:kg|grammi|gr|g)\s*(?:di\s+)?(.+)$",
         text,
         re.IGNORECASE,
     )
     if m:
         q = float(m.group(1).replace(",", "."))
-        unit_str = re.search(r"(kg|g|gr|grammi)", m.group(0), re.IGNORECASE).group(1).lower()
+        unit_str = re.search(r"(kg|grammi|gr|g)", m.group(0), re.IGNORECASE).group(1).lower()
         if unit_str == "kg":
             q *= 1000
         return m.group(2).strip(), q, "g"
@@ -265,7 +265,32 @@ def _parse_input(text: str) -> tuple[str, float, str]:
         if re.match(rf"^{word}\s+", text, re.IGNORECASE):
             food = re.sub(rf"^{word}\s+", "", text, flags=re.IGNORECASE).strip()
             food = re.sub(r"^di\s+", "", food)
+
+            # Unit words after the number: "una tazza di latte", "due fette di pane"
+            m_unit = re.match(
+                r"^(\w+)\s+(?:di\s+)?(.+)$", food, re.IGNORECASE
+            )
+            if m_unit:
+                unit_word = m_unit.group(1).lower()
+                food_candidate = m_unit.group(2).strip()
+                if unit_word in UNIT_GRAMS:
+                    return food_candidate, val * UNIT_GRAMS[unit_word], "g"
+                if unit_word in PORTION_WORDS:
+                    return food_candidate, val, "pcs"
+
             return food, val, "pcs"
+
+    # Unit words without a leading number: "tazza di latte", "fetta di torta"
+    m_unit = re.match(
+        r"^(una?|un[oa]?)?\s*(\w+)\s+(?:di\s+)?(.+)$", text, re.IGNORECASE
+    )
+    if m_unit:
+        unit_word = m_unit.group(2).lower()
+        food_candidate = m_unit.group(3).strip()
+        if unit_word in UNIT_GRAMS:
+            return food_candidate, float(UNIT_GRAMS[unit_word]), "g"
+        if unit_word in PORTION_WORDS:
+            return food_candidate, 1.0, "pcs"
 
     return text, 1.0, "pcs"
 
@@ -407,11 +432,11 @@ def _welcome_text(weight_kg: Optional[float], goal: str = "main") -> str:
         "👋 Ciao! Sono *NutriBob*, il tuo diario alimentare personale.\n"
         + (profile_line + "\n" if profile_line else "")
         + "\n*Dimmi cosa hai mangiato e stimo le calorie, ad esempio:*\n"
-        "🍝 • `pasta al pomodoro`\n"
-        "🍗 • `200g di petto di pollo`\n"
-        "🍎 • `due mele`\n"
-        "☕ • `un cappuccino`\n"
-        "🛒 • `pasta, pollo, una mela` — più alimenti insieme\n\n"
+        "🍝 • pasta al pomodoro\n"
+        "🍗 • 200g di petto di pollo\n"
+        "🍎 • due mele\n"
+        "☕ • un cappuccino\n"
+        "🛒 • pasta, pollo, una mela — più alimenti insieme\n\n"
         "📋 *Comandi:*\n"
         "/oggi — diario di oggi\n"
         "/ieri — diario di ieri\n"
@@ -419,6 +444,7 @@ def _welcome_text(weight_kg: Optional[float], goal: str = "main") -> str:
         "/profilo — mostra o aggiorna peso e obiettivo\n"
         "/cancella — elimina l'ultima voce\n"
         "/reset — svuota il diario di oggi\n"
+        "/tabella — guida alle unità di misura\n"
         "/help — mostra questo messaggio"
     )
 
@@ -514,6 +540,40 @@ async def cmd_cancella(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
     else:
         await update.message.reply_text("📭 Nessuna voce da eliminare.")
+
+
+async def cmd_tabella(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "📏 *Guida alle unità di misura*\n\n"
+        "✅ *Raccomandato: usa i grammi*\n"
+        "La misurazione più precisa — scrivi il numero seguito da `g` o `gr`:\n"
+        "`200g pasta` · `150gr petto di pollo` · `30g parmigiano`\n\n"
+        "─────────────────────────\n"
+        "🥄 *Unità con peso fisso* — le conosco direttamente:\n\n"
+        "`tazza` / `tazze` → 240 g\n"
+        "`bicchiere` / `bicchieri` → 250 g\n"
+        "`lattina` / `lattine` → 330 g\n"
+        "`bottiglia` / `bottiglie` → 500 g\n"
+        "`cucchiaio` / `cucchiai` → 15 g\n"
+        "`cucchiaino` / `cucchiaini` → 5 g\n"
+        "`ml` → 1 g (per le bevande)\n\n"
+        "_Esempi: `una tazza di latte`, `due cucchiai di olio`, `250ml succo_\n\n"
+        "─────────────────────────\n"
+        "🍽️ *Unità descrittive* — uso la porzione standard del cibo:\n\n"
+        "`fetta` — es. `una fetta di torta` → 100 g\n"
+        "`piatto` — es. `un piatto di pasta al pomodoro` → 280 g\n"
+        "`porzione` — es. `una porzione di pollo` → 150 g\n"
+        "`pezzo` — es. `un pezzo di pizza` → 300 g\n"
+        "`ciotola` — es. `una ciotola di fragole` → 150 g\n"
+        "`vasetto` — es. `un vasetto di yogurt` → 125 g\n"
+        "`trancio` — es. `un trancio di salmone` → 150 g\n"
+        "`filetto` — es. `un filetto di merluzzo` → 150 g\n\n"
+        "_Il peso effettivo dipende dal cibo — varia da alimento ad alimento._\n\n"
+        "─────────────────────────\n"
+        "💡 *Consiglio*: per la massima precisione usa sempre i grammi.\n"
+        "Le unità descrittive sono stime basate su porzioni medie italiane.",
+        parse_mode="Markdown",
+    )
 
 
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -719,6 +779,7 @@ def main() -> None:
     app.add_handler(CommandHandler("settimana", cmd_settimana))
     app.add_handler(CommandHandler("cancella", cmd_cancella))
     app.add_handler(CommandHandler("reset", cmd_reset))
+    app.add_handler(CommandHandler("tabella", cmd_tabella))
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
