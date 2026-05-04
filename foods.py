@@ -7,7 +7,7 @@
 # Usato da _parse_input in bot.py per convertire "una tazza di X" → Xg.
 # Le unità "descrittive" (fetta, piatto, porzione, pezzo…) NON sono qui:
 # per quelle si usa la std_portion del cibo (qty=1, unit='pcs').
-UNIT_GRAMS: dict[str, int] = {
+UNIT_GRAMS: dict[str, float] = {
     "tazza":      240,   # tazza standard (~240 ml)
     "tazze":      240,
     "bicchiere":  250,   # bicchiere standard (~250 ml)
@@ -20,6 +20,8 @@ UNIT_GRAMS: dict[str, int] = {
     "cucchiai":    15,
     "cucchiaino":   5,   # cucchiaino da tè
     "cucchiaini":   5,
+    "misurino":    40 / 3,  # 3 misurini = 40g
+    "misurini":    40 / 3,
     "ml":           1,   # millilitri (1:1 con grammi per le bevande)
 }
 
@@ -35,6 +37,19 @@ PORTION_WORDS: set[str] = {
     "vasetto", "vasetti",
     "trancio", "tranci",
     "filetto", "filetti",
+}
+
+# Pesi specifici per unità descrittive su certi alimenti.
+# Struttura: { food_key: { unit_word: grams } }
+# Usato in estimate_calories quando l'utente dice "fetta di X" o "pezzo di X".
+PORTION_OVERRIDES: dict[str, dict[str, int]] = {
+    # pizza tonda: 1 fetta = 1/6 ≈ 140g; pezzo/trancio di teglia = ~175g
+    "pizza":                {"fetta": 140, "fette": 140, "pezzo": 175, "pezzi": 175, "trancio": 175, "tranci": 175, "porzione": 175, "porzioni": 175},
+    "pizza margherita":     {"fetta": 140, "fette": 140, "pezzo": 175, "pezzi": 175, "trancio": 175, "tranci": 175, "porzione": 175, "porzioni": 175},
+    "pizza bianca":         {"fetta": 140, "fette": 140, "pezzo": 175, "pezzi": 175, "trancio": 175, "tranci": 175, "porzione": 175, "porzioni": 175},
+    "pizza con prosciutto": {"fetta": 140, "fette": 140, "pezzo": 175, "pezzi": 175, "trancio": 175, "tranci": 175, "porzione": 175, "porzioni": 175},
+    "pizza quattro stagioni":{"fetta": 140, "fette": 140, "pezzo": 175, "pezzi": 175, "trancio": 175, "tranci": 175, "porzione": 175, "porzioni": 175},
+    "pizza diavola":        {"fetta": 140, "fette": 140, "pezzo": 175, "pezzi": 175, "trancio": 175, "tranci": 175, "porzione": 175, "porzioni": 175},
 }
 
 FOODS: dict[str, tuple[int, int, str]] = {
@@ -169,14 +184,14 @@ FOODS: dict[str, tuple[int, int, str]] = {
     "avena": (370, 50, "1 ciotola"),
     "cornflakes": (380, 40, "1 ciotola"),
     "fiocchi di avena": (370, 50, "1 ciotola"),
-    "pizza": (270, 300, "1 pezzo/fetta"),
-    "pizza margherita": (270, 300, "1 pezzo"),
-    "pizza bianca": (300, 200, "1 pezzo"),
-    "pizza con prosciutto": (300, 300, "1 pezzo"),
-    "pizza quattro stagioni": (290, 300, "1 pezzo"),
-    "pizza diavola": (310, 300, "1 pezzo"),
-    "focaccia": (330, 100, "1 pezzo"),
-    "focaccia con rosmarino": (320, 100, "1 pezzo"),
+    "pizza": (265, 850, "1 pizza tonda intera (~850g)"),
+    "pizza margherita": (265, 850, "1 pizza tonda intera (~850g)"),
+    "pizza bianca": (280, 850, "1 pizza tonda intera (~850g)"),
+    "pizza con prosciutto": (275, 850, "1 pizza tonda intera (~850g)"),
+    "pizza quattro stagioni": (270, 850, "1 pizza tonda intera (~850g)"),
+    "pizza diavola": (285, 850, "1 pizza tonda intera (~850g)"),
+    "focaccia": (310, 200, "1 pezzo (~200g)"),
+    "focaccia con rosmarino": (320, 200, "1 pezzo (~200g)"),
     "piadina": (290, 100, "1 piadina"),
     "piadina con prosciutto": (350, 180, "1 piadina farcita"),
     "tramezzino": (260, 100, "1 tramezzino"),
@@ -204,8 +219,8 @@ FOODS: dict[str, tuple[int, int, str]] = {
     "wurstel": (310, 60, "1 wurstel"),
     "salame": (400, 30, "3-4 fette"),
     "salami": (400, 30, "3-4 fette"),
-    "prosciutto cotto": (215, 50, "2-3 fette"),
-    "prosciutto crudo": (258, 30, "2-3 fette"),
+    "prosciutto cotto": (155, 50, "2-3 fette"),
+    "prosciutto crudo": (245, 50, "3-4 fette (~50g)"),
     "bresaola": (174, 50, "4-5 fette"),
     "mortadella": (311, 40, "2-3 fette"),
     "pancetta": (458, 30, "2-3 fette"),
@@ -214,8 +229,8 @@ FOODS: dict[str, tuple[int, int, str]] = {
     "agnello": (290, 150, "1 porzione"),
     "costolette di agnello": (290, 150, "2 costolette"),
     "vitello": (172, 150, "1 fetta"),
-    "cotoletta": (265, 180, "1 cotoletta"),
-    "cotoletta alla milanese": (265, 180, "1 cotoletta"),
+    "cotoletta": (310, 180, "1 cotoletta"),
+    "cotoletta alla milanese": (310, 180, "1 cotoletta"),
     "scaloppine": (200, 150, "1 porzione"),
     "polpette": (235, 150, "3-4 polpette"),
     "polpette al sugo": (200, 200, "1 porzione"),
@@ -294,7 +309,9 @@ FOODS: dict[str, tuple[int, int, str]] = {
     "provolone": (352, 40, "1 fetta"),
     "panna": (337, 30, "1 cucchiaio"),
     "panna da cucina": (190, 30, "1 cucchiaio"),
-    "burro": (750, 10, "1 noce"),
+    "burro": (717, 10, "1 noce"),
+    "proteina": (410, 40, "3 misurini (40g)"),
+    "proteine": (410, 40, "3 misurini (40g)"),
 
     # ── LEGUMI ───────────────────────────────────────────────────
     "fagioli": (337, 80, "1 porzione (secchi)"),
@@ -328,9 +345,9 @@ FOODS: dict[str, tuple[int, int, str]] = {
     "mix frutta secca": (600, 30, "1 manciata"),
 
     # ── CONDIMENTI E SALSE ───────────────────────────────────────
-    "olio di oliva": (884, 10, "1 cucchiaio"),
-    "olio extravergine": (884, 10, "1 cucchiaio"),
-    "olio di semi": (900, 10, "1 cucchiaio"),
+    "olio di oliva": (884, 13, "1 cucchiaio (~13g)"),
+    "olio extravergine": (884, 13, "1 cucchiaio (~13g)"),
+    "olio di semi": (900, 13, "1 cucchiaio (~13g)"),
     "maionese": (680, 20, "1 cucchiaio"),
     "ketchup": (112, 20, "1 cucchiaio"),
     "salsa di pomodoro": (35, 100, "1 porzione"),
@@ -417,9 +434,9 @@ FOODS: dict[str, tuple[int, int, str]] = {
     "caffè": (2, 50, "1 tazzina"),
     "caffe macchiato": (15, 60, "1 tazzina"),
     "caffè macchiato": (15, 60, "1 tazzina"),
-    "cappuccino": (120, 150, "1 cappuccino"),
-    "cappuccino con zucchero": (140, 150, "1 cappuccino"),
-    "latte macchiato": (90, 200, "1 bicchiere"),
+    "cappuccino": (53, 150, "1 cappuccino"),
+    "cappuccino con zucchero": (60, 150, "1 cappuccino"),
+    "latte macchiato": (55, 200, "1 bicchiere"),
     "caffe latte": (60, 200, "1 bicchiere"),
     "caffè d orzo": (5, 50, "1 tazzina"),
     "orzo": (5, 50, "1 tazzina"),
